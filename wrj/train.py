@@ -5,7 +5,7 @@ import pandas as pd
 
 from auto_loss_fn import CustomLoss
 import data
-from model_wrj import Net
+from model import Net
 from config import Config
 config = Config()
 
