@@ -1,80 +1,56 @@
 import torch
 import torch.nn as nn
-from tqdm import tqdm
-from utils import Save_Load_Checkpoint, Metrics
 
 
 class Train:
     def __init__(self,
-                 train_dataloader,
-                 validation_dataloader,
-                 test_dataloader,
+                 epoch: int,
+                 batch_size: int,
+                 optimizer: str,
+                 loss_fn: str,
+                 optimizer_parameters,
                  net,
-                 loss_fn,
-                 optimizer,
-                 config,
-                 save_path,
+                 train_loader,
+                 validation_loader,
                  ) -> None:
-
-        self.train_dataloader = train_dataloader
-        self.validation_dataloader = validation_dataloader
-        self.test_dataloader = test_dataloader
-
+        super().__init__()
+        self.epoch = epoch
+        self.batch_size = batch_size
+        self.optimizer = getattr(torch.optim, optimizer)(optimizer_parameters)
+        self.loss_fn = getattr(nn, loss_fn)()
         self.net = net
-        self.checkpoint = Save_Load_Checkpoint(save_path)
-        self.loss_fn = loss_fn
-        self.optimizer = optimizer
+        self.train_loader = train_loader
+        self.validation_loader = validation_loader
+        self.total_loss = 0
 
-        self.acc = 0
-        self.validation_metric = []
-        self.test_metric = []
-        self.config = config
+        self.correct = 0
+        self.accuracy = 0
+        self.num_data = 0
 
     def train(self):
-        acc = 0
         self.net.train()
-        loop = tqdm(self.train_dataloader)
-        for epoch in range(self.config.EPOCH):
-            print(f"-----Epoch: {epoch + 1} -----")
-            loss_total = 0
-            data_size = 0
-            for idx, (seq, label) in enumerate(loop):
+        for epoch in range(self.epoch):
+            self.total_loss = 0
+            for idx, (seq, label) in enumerate(self.train_loader):
                 self.optimizer.zero_grad()
                 output = self.net(seq)
                 loss = self.loss_fn(output, label)
                 loss.backward()
-                self.optimizer.step()
-                loss_total += loss.item()
-                data_size += seq[0]
+                self.correct += (label == output).sum().item()
+                self.total_loss += loss
+                self.num_data += seq.size(0)
 
-            print(f"Train_loss is {loss_total / data_size}.")
-            print("----- Save CheckPoint -----")
-            if epoch % 10 == 0:
-                self.validation()
-                if self.acc > acc:
-                    self.checkpoint.save_checkpoint(self.net, True)
-                    acc = self.acc
-                else:
-                    self.checkpoint.save_checkpoint(self.net, False)
+            self.accuracy = self.correct / self.num_data
 
     def validation(self):
-        label_list = []
-        label_predict = []
-        loss_val = 0
-        with torch.no_grad():
-            for idx_val, (seq_val, label_val) in enumerate(self.validation_dataloader):
-                output_val = self.net(seq_val)
-                loss = self.loss_fn(output_val, label_val)
-                loss_val += loss.item()
-                output_val = output_val.argmax(dim=-1)
-                label_predict.extend(output_val.tolist())
-                label_list.extend(label_val.tolist())
+        self.net.eval()
 
-            cal_metric = Metrics(label_list, label_predict)
-        self.validation_metric.append(cal_metric.get_all())
-        self.acc = cal_metric.get_acc()
-        print(
-            f"Acc: {cal_metric.get_acc()}. Sn: {cal_metric.get_sn()}. Sp: {cal_metric.get_sp()}. MCC: {cal_metric.get_mcc()}.")
+        for idx, (seq, label) in enumerate(self.validation_loader):
+            with torch.no_grad():
+                output = self.net(seq)
+                self.correct + (label == output).sum().item()
+                self.num_data += seq.size(0)
+            self.accuracy = self.correct / self.num_data
 
 
 
